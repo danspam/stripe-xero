@@ -38,6 +38,7 @@ node_modules
 
 #any output file
 *.csv
+lastdatefile.dat
 
 #secrets
 config.json
