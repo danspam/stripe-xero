@@ -17,9 +17,9 @@ var fs = require("fs");
 var lastdatefile = "lastdatefile.dat";
 
 fs.readFile(lastdatefile, 'utf8', function (err,data) {
-    
+
     if (err) {
-        since = moment("2016-10-1").unix();
+        since = moment("2016-10-03").unix();
     } else {
         since = moment(data).unix();
     }
@@ -31,7 +31,10 @@ fs.readFile(lastdatefile, 'utf8', function (err,data) {
         limit: 100
     }).then(function(transactions) {
         var writer = csvWriter();
-        writer.pipe(fs.createWriteStream('stripestatement_since_'+ since +'.csv'));
+        var outFile = 'stripestatement_since_'+ since +'.csv';
+
+        writer.pipe(fs.createWriteStream(outFile));
+
         _.each(transactions.data, function(transaction){
             writer.write({
                 Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
@@ -51,17 +54,15 @@ fs.readFile(lastdatefile, 'utf8', function (err,data) {
                 });
             }
         });
+
         writer.end();
+
         fs.writeFile(lastdatefile, moment().format() , function(err) {
             if(err) {
                 return console.log(err);
             }
-            console.log("The file was saved!");
+            console.log("Transactions saved to " + outFile);
         });
-
-
     }).catch(winston.error.bind(winston));
-     
-
 });
 
