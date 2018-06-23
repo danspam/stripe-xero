@@ -1,19 +1,20 @@
+var config;
+
 try {
-    config = require("./config.json")
+    config = require("./config.json");
 }
 catch (err) {
-    config = {}
+    config = {};
     console.log("unable to read file 'config.json': ", err);
 }
 
-
-var _ = require("underscore");
+var async = require("async");
 var moment = require("moment");
 var stripe = require("stripe")(config.apiKey);
 var csvWriter = require("csv-write-stream");
 var winston = require('winston');
 var fs = require("fs");
-
+var since;
 var lastdatefile = "lastdatefile.dat";
 
 fs.readFile(lastdatefile, 'utf8', function (err,data) {
@@ -35,34 +36,46 @@ fs.readFile(lastdatefile, 'utf8', function (err,data) {
 
         writer.pipe(fs.createWriteStream(outFile));
 
-        _.each(transactions.data, function(transaction){
-            writer.write({
-                Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
-                Amount: (transaction.amount/100.0).toFixed(2),
-                Payee: "",
-                Description: transaction.description,
-                Reference: transaction.id
-            });
+        async.eachSeries(transactions.data, function(transaction, cb){
 
-            if (transaction.fee > 0) {
+            stripe.charges.retrieve(transaction.source, {
+                expand: ["customer"]
+              }, function(err, charge) {
+                if(err) {
+                    console.log(err);
+                }
                 writer.write({
                     Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
-                    Amount: ((0 - transaction.fee)/100.0).toFixed(2),
-                    Payee: "Stripe",
-                    Description: "Stripe processing Fee",
-                    Reference: transaction.id
+                    Amount: (transaction.amount/100.0).toFixed(2),
+                    Payee: charge && charge.customer && charge.customer.description ? charge.customer.description : "",
+                    Description: transaction.description,
+                    Reference: transaction.source
                 });
-            }
+
+                if (transaction.fee > 0) {
+                    writer.write({
+                        Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
+                        Amount: ((0 - transaction.fee)/100.0).toFixed(2),
+                        Payee: "Stripe",
+                        Description: "Stripe processing Fee",
+                        Reference: transaction.id
+                    });
+                }
+
+                cb();
+            });
+        }, function(){
+            writer.end();
+
+            fs.writeFile(lastdatefile, moment().format() , function(err) {
+                if(err) {
+                    return console.log(err);
+                }
+                console.log("Transactions saved to " + outFile);
+            });          
         });
 
-        writer.end();
 
-        fs.writeFile(lastdatefile, moment().format() , function(err) {
-            if(err) {
-                return console.log(err);
-            }
-            console.log("Transactions saved to " + outFile);
-        });
     }).catch(winston.error.bind(winston));
 });
 
