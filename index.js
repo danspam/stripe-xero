@@ -17,6 +17,26 @@ var fs = require("fs");
 var since;
 var lastdatefile = "lastdatefile.dat";
 
+function writeToFile(writer, transaction, charge) {
+    writer.write({
+        Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
+        Amount: (transaction.amount/100.0).toFixed(2),
+        Payee: charge && charge.customer && charge.customer.description ? charge.customer.description : "",
+        Description: transaction.description,
+        Reference: transaction.source
+    });
+
+    if (transaction.fee > 0) {
+        writer.write({
+            Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
+            Amount: ((0 - transaction.fee)/100.0).toFixed(2),
+            Payee: "Stripe",
+            Description: "Stripe processing Fee",
+            Reference: transaction.id
+        });
+    }
+}
+
 fs.readFile(lastdatefile, 'utf8', function (err,data) {
 
     if (err) {
@@ -37,33 +57,20 @@ fs.readFile(lastdatefile, 'utf8', function (err,data) {
         writer.pipe(fs.createWriteStream(outFile));
 
         async.eachSeries(transactions.data, function(transaction, cb){
-
-            stripe.charges.retrieve(transaction.source, {
-                expand: ["customer"]
-              }, function(err, charge) {
-                if(err) {
-                    console.log(err);
-                }
-                writer.write({
-                    Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
-                    Amount: (transaction.amount/100.0).toFixed(2),
-                    Payee: charge && charge.customer && charge.customer.description ? charge.customer.description : "",
-                    Description: transaction.description,
-                    Reference: transaction.source
+            if (transaction.type === "charge") {
+                stripe.charges.retrieve(transaction.source, {
+                    expand: ["customer"]
+                }, function(err, charge) {
+                    if(err) {
+                        console.log(err);
+                    }
+                    writeToFile(writer, transaction, charge);
+                    cb();
                 });
-
-                if (transaction.fee > 0) {
-                    writer.write({
-                        Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
-                        Amount: ((0 - transaction.fee)/100.0).toFixed(2),
-                        Payee: "Stripe",
-                        Description: "Stripe processing Fee",
-                        Reference: transaction.id
-                    });
-                }
-
+            } else {
+                writeToFile(writer, transaction, null);
                 cb();
-            });
+            }
         }, function(){
             writer.end();
 
@@ -74,7 +81,6 @@ fs.readFile(lastdatefile, 'utf8', function (err,data) {
                 console.log("Transactions saved to " + outFile);
             });          
         });
-
 
     }).catch(winston.error.bind(winston));
 });
