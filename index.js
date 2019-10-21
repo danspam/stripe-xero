@@ -12,7 +12,7 @@ var async = require("async");
 var moment = require("moment");
 var stripe = require("stripe")(config.apiKey);
 var csvWriter = require("csv-write-stream");
-var winston = require('winston');
+var winston = require("winston");
 var fs = require("fs");
 var since;
 var lastdatefile = "lastdatefile.dat";
@@ -37,7 +37,7 @@ function writeToFile(writer, transaction, charge) {
     }
 }
 
-fs.readFile(lastdatefile, 'utf8', function (err,data) {
+fs.readFile(lastdatefile, "utf8", function (err,data) {
 
     if (err) {
         since = moment("2016-10-03").unix();
@@ -45,14 +45,14 @@ fs.readFile(lastdatefile, 'utf8', function (err,data) {
         since = moment(data).unix();
     }
 
-    stripe.balance.listTransactions({
+    stripe.balanceTransactions.list({
         created: {
             gt: since
         },
         limit: 100
     }).then(function(transactions) {
         var writer = csvWriter();
-        var outFile = 'stripestatement_since_'+ since +'.csv';
+        var outFile = "stripestatement_since_"+ since +".csv";
 
         writer.pipe(fs.createWriteStream(outFile));
 

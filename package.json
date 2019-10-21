@@ -9,10 +9,10 @@
   "author": "Dan Sargeant",
   "license": "ISC",
   "dependencies": {
-    "async": "^2.6.1",
+    "async": "^3.1.0",
     "csv-write-stream": "^2.0.0",
-    "moment": "^2.22.2",
-    "stripe": "^6.1.1",
-    "winston": "^3.0.0"
+    "moment": "^2.24.0",
+    "stripe": "^7.10.0",
+    "winston": "^3.2.1"
   }
 }
