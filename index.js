@@ -49,7 +49,7 @@ fs.readFile(lastdatefile, "utf8", function (err,data) {
         created: {
             gt: since
         },
-        limit: 100
+        limit: 300
     }).then(function(transactions) {
         var writer = csvWriter();
         var outFile = "stripestatement_since_"+ since +".csv";
