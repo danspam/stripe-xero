@@ -11,8 +11,8 @@
   "dependencies": {
     "async": "^3.2.0",
     "csv-write-stream": "^2.0.0",
-    "moment": "^2.24.0",
-    "stripe": "^8.32.0",
-    "winston": "^3.2.1"
+    "moment": "^2.27.0",
+    "stripe": "^8.88.0",
+    "winston": "^3.3.3"
   }
 }
