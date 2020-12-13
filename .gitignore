@@ -39,6 +39,7 @@ node_modules
 #any output file
 *.csv
 lastdatefile.dat
+stripe-xero.log*
 
 #secrets
 config.json
