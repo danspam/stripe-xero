@@ -20,7 +20,7 @@ const logger = winston.createLogger({
       })
     ]
 });
-  
+
 
 try {
     config = require("./config.json");
