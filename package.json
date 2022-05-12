@@ -11,9 +11,9 @@
   "dependencies": {
     "async": "^3.2.3",
     "csv-write-stream": "^2.0.0",
-    "dropbox": "^10.27.0",
-    "moment": "^2.29.2",
-    "stripe": "^8.216.0",
+    "dropbox": "^10.29.0",
+    "moment": "^2.29.3",
+    "stripe": "^9.1.0",
     "winston": "^3.7.2",
     "winston-daily-rotate-file": "^4.6.1"
   }
