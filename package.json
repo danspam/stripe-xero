@@ -9,12 +9,12 @@
   "author": "Dan Sargeant",
   "license": "ISC",
   "dependencies": {
-    "async": "^3.2.3",
+    "async": "^3.2.4",
     "csv-write-stream": "^2.0.0",
-    "dropbox": "^10.29.0",
-    "moment": "^2.29.3",
-    "stripe": "^9.1.0",
-    "winston": "^3.7.2",
-    "winston-daily-rotate-file": "^4.6.1"
+    "dropbox": "^8.2.0",
+    "moment": "^2.29.4",
+    "stripe": "^8.222.0",
+    "winston": "^3.9.0",
+    "winston-daily-rotate-file": "^4.7.1"
   }
 }
