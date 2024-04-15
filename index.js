@@ -1,41 +1,52 @@
-var config;
-var winston = require("winston");
-var Dropbox = require("dropbox").Dropbox;
-require("winston-daily-rotate-file");
+import { createLogger, format, transports } from "winston";
+import "winston-daily-rotate-file";
+import { eachSeries } from "async";
+import moment from "moment";
+import Stripe from "stripe";
+import csvWriter from "csv-write-stream";
+import { readFile, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { join } from "node:path";
 
-//configure logging
-const logger = winston.createLogger({
+const lastDateFilename = "lastdatefile.dat";
+const workingDir = "CHANGE_ME";
+
+const logger = createLogger({
     level: "info",
-    format: winston.format.simple(),
+    format: format.simple(),
     transports: [
-      new winston.transports.DailyRotateFile({
-        filename: "stripe-xero.log",
-        dirname: "D:\\node\\stripe-xero",
-        datePattern: "YYYY-MM-DD",
-        prepend: false,
-        level: "info"
-    }),
-    new winston.transports.Console({
-        format: winston.format.simple()
-      })
+        new transports.DailyRotateFile({
+            filename: "stripe-xero.log",
+            dirname: join(workingDir, "logs"),
+            datePattern: "YYYY-MM-DD",
+            prepend: false,
+            level: "info"
+        }),
+        new transports.Console({
+            format: format.simple()
+        })
     ]
 });
 
-
-try {
-    config = require("./config.json");
-} catch (err) {
-    config = {};
-    logger.error(err);
+async function loadConfig() {
+    try {
+        return JSON.parse(
+            await readFile(join(workingDir, "config.json"), "utf8")
+        );
+    } catch (err) {
+        logger.error(err);
+        return {};
+    }
 }
 
-var async = require("async");
-var moment = require("moment");
-var stripe = require("stripe")(config.apiKey);
-var csvWriter = require("csv-write-stream");
-var fs = require("fs");
-var since;
-var lastdatefile = "lastdatefile.dat";
+async function getLastDate() {
+    try {
+        const date = await readFile(join(workingDir, lastDateFilename), "utf8");
+        return moment(date).unix();
+    } catch (err) {
+        return moment("2016-10-03").unix();
+    }
+}
 
 function writeToFile(writer, transaction, charge) {
     writer.write({
@@ -60,86 +71,42 @@ function writeToFile(writer, transaction, charge) {
     }
 }
 
-function uploadToDropbox(filename) {
-    fs.readFile(filename, "utf8", function (err, data) {
-        if (err) {
-            return logger.error(err);
-        }
-        const dbx = new Dropbox({
-            accessToken:config.dropbox
-          });
+const config = await loadConfig();
+const stripe = new Stripe(config.apiKey);
+const since = await getLastDate();
+const outFilename = "stripestatement_since_" + since + ".csv";
 
-          dbx.filesUpload({
-            path: `/stripe-xero/${filename}`,
-            contents: data
-          })
-          .then(() => {
-            logger.info("Upload to dropbox complete");
-          })
-          .catch(err => {
-            logger.error(err);
-          });
+try {
+    const transactions = await stripe.balanceTransactions.list({
+        created: { gt: since },
+        limit: 300
     });
-}
+    const writer = csvWriter();
 
-fs.readFile(lastdatefile, "utf8", function (err, data) {
-    if (err) {
-        since = moment("2016-10-03").unix();
-    } else {
-        since = moment(data).unix();
-    }
+    writer.pipe(createWriteStream(join(workingDir, "exports", outFilename)));
 
-    stripe.balanceTransactions
-        .list({
-            created: {
-                gt: since
-            },
-            limit: 300
-        })
-        .then(function (transactions) {
-            var writer = csvWriter();
-            var outFile = "stripestatement_since_" + since + ".csv";
-
-            writer.pipe(fs.createWriteStream(outFile));
-
-            async.eachSeries(
-                transactions.data,
-                function (transaction, cb) {
-                    if (transaction.type === "charge") {
-                        stripe.charges.retrieve(
-                            transaction.source,
-                            {
-                                expand: ["customer"]
-                            },
-                            function (err, charge) {
-                                if (err) {
-                                    logger.error(err);
-                                }
-                                writeToFile(writer, transaction, charge);
-                                cb();
-                            }
-                        );
-                    } else {
-                        writeToFile(writer, transaction, null);
-                        cb();
-                    }
-                },
-                function () {
-                    writer.end();
-
-                    fs.writeFile(
-                        lastdatefile,
-                        moment().format(),
-                        function (err) {
-                            if (err) {
-                                return logger.error(err);
-                            }
-                            logger.info("Transactions saved to " + outFile);
-                            uploadToDropbox(outFile);
-                        }
+    eachSeries(
+        transactions.data,
+        async function (transaction) {
+            let charges = null;
+            if (transaction.type === "charge") {
+                try {
+                    charges = await stripe.charges.retrieve(
+                        transaction.source,
+                        { expand: ["customer"] }
                     );
+                } catch (err) {
+                    logger.error(err);
                 }
-            );
-        })
-        .catch(logger.error.bind(logger));
-});
+            }
+            writeToFile(writer, transaction, charges);
+        },
+        async function () {
+            writer.end();
+            await writeFile(lastDateFilename, moment().format());
+            logger.info("Transactions saved to " + outFilename);
+        }
+    );
+} catch (err) {
+    logger.error(err);
+}
