@@ -103,7 +103,7 @@ try {
         },
         async function () {
             writer.end();
-            await writeFile(lastDateFilename, moment().format());
+            await writeFile(join(workingDir, lastDateFilename), moment().format());
             logger.info("Transactions saved to " + outFilename);
         }
     );
