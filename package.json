@@ -10,16 +10,16 @@
   "author": "Dan Sargeant",
   "license": "ISC",
   "dependencies": {
-    "async": "^3.2.6",
-    "csv-write-stream": "^2.0.0",
-    "moment": "^2.30.1",
-    "stripe": "^20.3.1",
-    "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "async": "3.2.6",
+    "csv-write-stream": "2.0.0",
+    "moment": "2.30.1",
+    "stripe": "20.3.1",
+    "winston": "3.19.0",
+    "winston-daily-rotate-file": "5.0.0"
   },
   "devDependencies": {
-    "eslint": "^10.0.0",
-    "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.3.0"
+    "eslint": "10.0.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.3.0"
   }
 }
