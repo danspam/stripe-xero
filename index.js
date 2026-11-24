@@ -1,112 +1,92 @@
-import { createLogger, format, transports } from "winston";
-import "winston-daily-rotate-file";
-import { eachSeries } from "async";
-import moment from "moment";
 import Stripe from "stripe";
-import csvWriter from "csv-write-stream";
-import { readFile, writeFile } from "node:fs/promises";
-import { createWriteStream } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parseCliArgs, usage } from "./lib/cli.js";
+import { writeCsv } from "./lib/csv.js";
+import { fetchRows } from "./lib/fetch-transactions.js";
+import { createLogger } from "./lib/log.js";
+import {
+    exportFilename,
+    formatLastDate,
+    parseConfig,
+    parseLastDate
+} from "./lib/transform.js";
 
 const lastDateFilename = "lastdatefile.dat";
-const workingDir = "CHANGE_ME";
+// Used when there is no last date file yet. 3 Oct 2016, local time.
+const defaultStartDate = new Date(2016, 9, 3);
 
-const logger = createLogger({
-    level: "info",
-    format: format.simple(),
-    transports: [
-        new transports.DailyRotateFile({
-            filename: "stripe-xero.log",
-            dirname: join(workingDir, "logs"),
-            datePattern: "YYYY-MM-DD",
-            prepend: false,
-            level: "info"
-        }),
-        new transports.Console({
-            format: format.simple()
-        })
-    ]
-});
-
-async function loadConfig() {
+async function loadConfig(workingDir) {
+    const path = join(workingDir, "config.json");
     try {
-        return JSON.parse(
-            await readFile(join(workingDir, "config.json"), "utf8")
-        );
+        return parseConfig(await readFile(path, "utf8"));
     } catch (err) {
-        logger.error(err);
-        return {};
-    }
-}
-
-async function getLastDate() {
-    try {
-        const date = await readFile(join(workingDir, lastDateFilename), "utf8");
-        return moment(date).unix();
-    } catch (err) {
-        return moment("2016-10-03").unix();
-    }
-}
-
-function writeToFile(writer, transaction, charge) {
-    writer.write({
-        Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
-        Amount: (transaction.amount / 100.0).toFixed(2),
-        Payee:
-            charge && charge.customer && charge.customer.description
-                ? charge.customer.description
-                : "",
-        Description: transaction.description,
-        Reference: transaction.source
-    });
-
-    if (transaction.fee > 0) {
-        writer.write({
-            Date: moment.unix(transaction.created).format("DD/MM/YYYY"),
-            Amount: ((0 - transaction.fee) / 100.0).toFixed(2),
-            Payee: "Stripe",
-            Description: "Stripe processing Fee",
-            Reference: transaction.id
+        throw new Error(`Could not load config file ${path}: ${err.message}`, {
+            cause: err
         });
     }
 }
 
-const config = await loadConfig();
-const stripe = new Stripe(config.apiKey);
-const since = await getLastDate();
-const outFilename = "stripestatement_since_" + since + ".csv";
-
-try {
-    const transactions = await stripe.balanceTransactions.list({
-        created: { gt: since },
-        limit: 300
-    });
-    const writer = csvWriter();
-
-    writer.pipe(createWriteStream(join(workingDir, "exports", outFilename)));
-
-    eachSeries(
-        transactions.data,
-        async function (transaction) {
-            let charges = null;
-            if (transaction.type === "charge") {
-                try {
-                    charges = await stripe.charges.retrieve(
-                        transaction.source,
-                        { expand: ["customer"] }
-                    );
-                } catch (err) {
-                    logger.error(err);
-                }
-            }
-            writeToFile(writer, transaction, charges);
-        },
-        async function () {
-            writer.end();
-            await writeFile(join(workingDir, lastDateFilename), moment().format());
-            logger.info("Transactions saved to " + outFilename);
+/**
+ * Returns the unix timestamp (seconds) of the last exported transaction.
+ */
+async function getLastDate(workingDir) {
+    const path = join(workingDir, lastDateFilename);
+    let contents;
+    try {
+        contents = await readFile(path, "utf8");
+    } catch (err) {
+        if (err.code === "ENOENT") {
+            return Math.floor(defaultStartDate.getTime() / 1000);
         }
-    );
+        throw err;
+    }
+    try {
+        return parseLastDate(contents);
+    } catch (err) {
+        throw new Error(`${path}: ${err.message}`, { cause: err });
+    }
+}
+
+async function main(workingDir, logger) {
+    const config = await loadConfig(workingDir);
+    const stripe = new Stripe(config.apiKey);
+    const since = await getLastDate(workingDir);
+
+    const { rows, count, latest } = await fetchRows(stripe, since, { logger });
+    if (count === 0) {
+        logger.info(`No new transactions since ${formatLastDate(since)}`);
+        return;
+    }
+
+    const exportDir = join(workingDir, "exports");
+    await mkdir(exportDir, { recursive: true });
+    const outFilename = exportFilename(since);
+    await writeCsv(join(exportDir, outFilename), rows);
+
+    // Only move the marker once the file is safely written, and only up to the
+    // last transaction actually exported, so nothing can be skipped.
+    await writeFile(join(workingDir, lastDateFilename), formatLastDate(latest));
+    logger.info(`${count} transactions saved to ${join(exportDir, outFilename)}`);
+}
+
+let options;
+try {
+    options = parseCliArgs(process.argv.slice(2), import.meta.dirname);
 } catch (err) {
-    logger.error(err);
+    process.stderr.write(`${err.message}\n\n${usage}`);
+    process.exitCode = 1;
+}
+
+if (options?.help) {
+    process.stdout.write(usage);
+} else if (options) {
+    const logger = createLogger({ dir: join(options.dir, "logs") });
+    try {
+        await main(options.dir, logger);
+    } catch (err) {
+        logger.error(err);
+        process.exitCode = 1;
+    }
+    await logger.flush();
 }

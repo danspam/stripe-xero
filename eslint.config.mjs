@@ -3,7 +3,8 @@ import eslintConfigPrettier from "eslint-config-prettier";
 import globals from "globals";
 
 export default [
-    js.configs.node,
+    { ignores: ["dist/"] },
+    js.configs.recommended,
     eslintConfigPrettier,
     {
         rules: {
@@ -17,11 +18,10 @@ export default [
             "no-var": 1
         },
         languageOptions : {
-            "ecmaVersion": 2020,
+            "ecmaVersion": "latest",
             "sourceType": "module",
             "globals": {
-                ...globals.node,
-                ...globals.es2021
+                ...globals.node
             }
         }
     }

@@ -43,3 +43,6 @@ stripe-xero.log*
 
 #secrets
 config.json
+
+#build output
+dist
